@@ -6,8 +6,8 @@ using DataFrames
 #Pkg.add("DataStructures")
 using DataStructures
 
-file = "07-input_test.txt"
-#file = "07-input.txt"
+#file = "07-input_test.txt"
+file = "07-input.txt"
 
 input = file |>
     readlines 
@@ -65,25 +65,20 @@ for line in input
     end
 end
 
-dirTotalSizeList
+df = DataFrame(dirTotalSizeList) 
+stacked = stack(df, 1:length(dirTotalSizeList); variable_name=:Path, value_name=:Size)
+under100k = filter(:Size => ((x) -> x <= 100000), stacked)
+combine(under100k, :Size => sum)
 
-for i in 1:length(input)
-    current_row = input[i]
-    q = Queue{Char}()
+# part 2
 
-    for j in 1:length(current_row)
-        current_char = current_row[j]
-        if length(q) >= uniques
-            dequeue!(q)
-        end
+# we need 30_000_000
 
-        enqueue!(q, current_char)
-        if length(q) == uniques
-            if length(unique(q)) == uniques
-                println("Unique found at ", j)
-                break
-            end
-        end  
-    end
-end
+total_size = 70_000_000
+size_needed = 30_000_000
+size_available = total_size - dirTotalSizeList["\$"]
+size_to_free_up = size_needed - size_available
 
+big_enough = filter(:Size => ((x) -> x >= size_to_free_up), stacked)
+arranged = sort(big_enough, :Size)
+first(arranged)
