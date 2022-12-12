@@ -30,10 +30,10 @@ for line in input
         if c == 'E'
             c = Int('z')
             end_pos = (i, j) 
+            d = 0
         elseif c == 'S'
             c = Int('a')
             start_pos = (i, j) 
-            d = 0
         end
         push!(l, c)
         push!(dl, d)
@@ -43,7 +43,7 @@ for line in input
 end
 
 this_time = Vector{Tuple{Int, Int}}()
-push!(this_time, start_pos)
+push!(this_time, end_pos)
 
 max_x = length(input[1])
 max_y = length(input)
@@ -66,7 +66,7 @@ for thing in 1:(max_x * max_y)
         end
 
         height_this_time = height_grid[y][x]
-        if (height_this_time > height + 1)
+        if (height > height_this_time + 1)
             return
         end
 
@@ -96,6 +96,22 @@ end
 
 distance_grid
 
-distance_to_target = distance_grid[end_pos[2]][end_pos[1]] 
+distance_to_target = distance_grid[start_pos[2]][start_pos[1]] 
 
 distance_to_target
+
+min_distance = max_x * max_y
+for x in 1:max_x
+    for y in 1:max_y
+        if height_grid[y][x] == Int('a')
+            d = distance_grid[y][x]
+            if d < min_distance
+                if d > 0
+                    min_distance = d
+                end
+            end
+        end
+    end
+end
+
+min_distance
