@@ -1,0 +1,407 @@
+using CSV
+using DataFrames
+#using Pkg
+#Pkg.add("DataStructures")
+#using DataStructures
+
+#file = "16-input_test.txt"
+file = "16-input.txt"
+
+input = file |>
+    readlines 
+
+lineRegex = r"Valve (.+) has flow rate=(\d+); tunnels? leads? to valves? (.+)"
+
+caves = Dict()
+
+for line in input
+    lineMatch = match(lineRegex, line)
+    name = lineMatch[1]
+    rate = parse(Int, lineMatch[2])
+    tunnels = split(lineMatch[3], ", ")
+    println(name, rate, tunnels)
+    caves[name] = (flow = rate, tunnels = tunnels)
+end
+
+#caves["??"] = (flow = 0, tunnels = ["AA"])
+
+num_calls = 0
+function calculate_score(time_left, state, location, do_not_immediately_return_to)
+
+    global num_calls = num_calls + 1
+    if (rem(num_calls, 1000) == 0)
+        println("call ", num_calls, " at time ", time_left)
+    end
+
+    if (time_left <= 0)
+        return (on=Vector(), score=0)
+    end
+
+    cave = caves[location]
+
+    max_score = 0
+    max_state = Vector()
+
+    if !haskey(state, location)
+        if (cave.flow > 0)
+            score_for_turning_on = (time_left - 1) * cave.flow
+            copied_state = copy(state)
+            copied_state[location] = true
+            score_for_moving_on = calculate_score(time_left - 1, copied_state, location, Dict())
+            #println("Score ", location, " ", score_for_turning_on, " ", score_for_moving_on)
+            return_state = score_for_moving_on.on
+            push!(return_state, (location, max_time-(time_left-1), score_for_turning_on))
+            
+            max_score = score_for_turning_on + score_for_moving_on.score
+            max_state = return_state
+        end
+    end
+
+    do_not_immediately_return_to_new = copy(do_not_immediately_return_to)     
+    do_not_immediately_return_to_new[location] = true
+
+    for choice in cave.tunnels
+        if !haskey(do_not_immediately_return_to, choice)
+            score = calculate_score(time_left - 1, state, choice, do_not_immediately_return_to_new)
+            if score.score > max_score
+                max_score = score.score
+                max_state = score.on
+            end
+        end
+    end
+    #println("Scores ", scores)
+    return (on = max_state, score = max_score)
+end
+
+max_time = 30
+initial_state = Dict()
+initial_loc = "AA"
+best = calculate_score(max_time, initial_state, initial_loc, Dict())
+best
+
+#1754 was the abswer!
+
+# alternatives?
+
+caves = Dict()
+
+for line in input
+    lineMatch = match(lineRegex, line)
+    name = lineMatch[1]
+    rate = parse(Int, lineMatch[2])
+    tunnels = split(lineMatch[3], ", ")
+    println(name, rate, tunnels)
+    dist_tunnnels = map((t) -> (location = t, distance = 1), tunnels)
+    caves[name] = (flow = rate, tunnels = Dict(dist_tunnnels))
+end
+
+
+function compact_these(this_time)
+    new_caves = Dict()
+    compacted = false
+    for c in keys(this_time)
+        current = this_time[c]
+
+        if current.flow == 0 
+            if c != "AA"
+                compacted = true
+                continue
+            end
+        end
+
+        tunnels = Dict()
+        for t in keys(current.tunnels)
+            other_end = caves[t]
+            if other_end.flow == 0 
+                for t2 in keys(other_end.tunnels)
+                    if t2 != c
+                        new_distance = other_end.tunnels[t2] + current.tunnels[t]
+                        if haskey(tunnels, t2)
+                            existing = tunnels[t2]
+                            if new_distance < existing
+                                println("compacting $c removing $t moving to $t2 at distance $new_distance")
+                                compacted = true      
+                                tunnels[t2] = new_distance
+                            end
+                        else
+                            println("compacting $c removing $t moving to $t2 at distance $new_distance")
+                            compacted = true                        
+                            tunnels[t2] = new_distance
+                        end
+
+                    end
+                end
+            else
+                tunnels[t] = current.tunnels[t]
+            end
+        end
+
+        new_caves[c] = (flow = current.flow, tunnels = tunnels)
+    end
+
+    return (compacted = compacted, new_caves = new_caves)
+end
+
+
+compact_two = compact_these(caves)
+compact_two.new_caves
+compact_three = compact_these(compact_two.new_caves)
+compact_three.new_caves
+compact_four = compact_these(compact_three.new_caves)
+compact_five = compact_these(compact_four.new_caves)
+compact_five.new_caves
+compact_six = compact_these(compact_four.new_caves)
+compact_six.new_caves
+
+current = caves
+for i in 1:30
+
+    next = compact_these(current)
+    if !next.compacted
+        println("Made it in ", i)
+        break
+    end
+
+    current = next.new_caves
+end
+
+function remove_dead_end_paths(current)
+    new_caves = Dict()
+    for c in keys(current)
+        cave = current[c]
+        new_tunnels = Dict()
+        for t in keys(cave.tunnels)
+            if caves[t].flow > 0
+                new_tunnels[t] = cave.tunnels[t]
+            end
+        end
+
+        new_caves[c] = (flow = cave.flow, tunnels = new_tunnels)
+    end
+    new_caves
+end
+
+current = remove_dead_end_paths(current)
+
+
+num_calls = 0
+function calculate_score(time_left, state, location, do_not_immediately_return_to)
+
+    global num_calls = num_calls + 1
+    if (rem(num_calls, 100000) == 0)
+        println("call ", num_calls, " at time ", time_left)
+    end
+
+    if (time_left <= 0)
+        return (on=Vector(), score=0)
+    end
+
+    cave = current[location]
+
+    max_score = 0
+    max_state = Vector()
+
+    if !haskey(state, location)
+        if (cave.flow > 0)
+            score_for_turning_on = (time_left - 1) * cave.flow
+            copied_state = copy(state)
+            copied_state[location] = true
+            score_for_moving_on = calculate_score(time_left - 1, copied_state, location, Dict())
+            #println("Score ", location, " ", score_for_turning_on, " ", score_for_moving_on)
+            return_state = score_for_moving_on.on
+            push!(return_state, (location, max_time-(time_left-1), score_for_turning_on))
+            
+            max_score = score_for_turning_on + score_for_moving_on.score
+            max_state = return_state
+        end
+    end
+
+    do_not_immediately_return_to_new = copy(do_not_immediately_return_to)     
+    do_not_immediately_return_to_new[location] = true
+
+    for choice in keys(cave.tunnels)
+        if !haskey(do_not_immediately_return_to, choice)
+            score = calculate_score(time_left - cave.tunnels[choice], state, choice, do_not_immediately_return_to_new)
+            if score.score > max_score
+                max_score = score.score
+                max_state = score.on
+            end
+        end
+    end
+    #println("Scores ", scores)
+    return (on = max_state, score = max_score)
+end
+
+
+max_time = 30
+initial_state = Dict()
+initial_loc = "AA"
+best = calculate_score(max_time, initial_state, initial_loc, Dict())
+best
+
+
+# attempt 3
+
+caves = Dict()
+
+for line in input
+    lineMatch = match(lineRegex, line)
+    name = lineMatch[1]
+    rate = parse(Int, lineMatch[2])
+    tunnels = split(lineMatch[3], ", ")
+    println(name, rate, tunnels)
+    dist_tunnnels = map((t) -> (location = t, distance = 1), tunnels)
+    caves[name] = (flow = rate, tunnels = Dict(dist_tunnnels))
+end
+
+function walk(this_time)
+    new_caves = Dict()
+    
+    for c in keys(this_time)
+        current = this_time[c]
+
+        if current.flow == 0 
+            if c != "AA"
+                continue
+            end
+        end
+
+        tunnels = Dict()
+        for t in keys(current.tunnels)
+            other_end = caves[t]
+
+            if other_end.flow > 0 
+                tunnels[t] = current.tunnels[t]
+            end
+
+            for t2 in keys(other_end.tunnels)
+                if t2 == c
+                    continue
+                end
+
+                new_distance = other_end.tunnels[t2] + current.tunnels[t]
+                if haskey(tunnels, t2)
+                    existing = tunnels[t2]
+                    if new_distance < existing
+                        println("compacting $c removing $t moving to $t2 at distance $new_distance")
+                        tunnels[t2] = new_distance
+                    end
+                else
+                    println("compacting $c removing $t moving to $t2 at distance $new_distance")
+                    tunnels[t2] = new_distance
+                end
+            end
+        end
+
+        new_caves[c] = (flow = current.flow, tunnels = tunnels)
+    end
+
+    new_caves
+end
+
+
+
+function remove_dead_end_paths(current)
+    new_caves = Dict()
+    for c in keys(current)
+        cave = current[c]
+        new_tunnels = Dict()
+        for t in keys(cave.tunnels)
+            if caves[t].flow > 0
+                new_tunnels[t] = cave.tunnels[t]
+            end
+        end
+
+        new_caves[c] = (flow = cave.flow, tunnels = new_tunnels)
+    end
+    new_caves
+end
+
+current = caves
+for i in 1:30
+    next = walk(current)
+    current = next
+end
+
+current = remove_dead_end_paths(current)
+
+start_time = 30
+
+num_calls = 1
+function  calculate_score_strategy(time_left, state, location)
+
+    global num_calls = num_calls + 1
+    if (rem(num_calls, 100000) == 0)
+        println("call ", num_calls, " at time ", time_left)
+    end
+
+    if (time_left <= 0)
+        return (state=state, benefit=0)
+    end
+
+    cave = current[location]
+    options = Vector()
+    
+    # option 1 is turn on the flow here
+    # cost is 1, benefit is (time_left - 1)*flow
+    # so net: (time_left - 1)*flow - 1
+    # 
+    # look at the tunnels...
+    # cost is distance + 1, benefit is (time_left - distance - 1)*flow_there
+    # so net: (time_left - distance - 1)*flow_there - distance - 1
+    if !haskey(state, location)
+        push!(options, (
+            location = location,
+            benefit = (time_left - 1) * cave.flow,
+            cost = 1,
+            score = (time_left - 1) * cave.flow - 1
+        ))
+    end
+
+    for t in keys(cave.tunnels)
+        distance_to_t = cave.tunnels[t]
+        flow_at_t = current[t].flow
+        if !haskey(state, t)
+            push!(options, (
+                location = t, 
+                benefit = (time_left - distance_to_t - 1) * flow_at_t,
+                cost = distance_to_t + 1,
+                score = (time_left - distance_to_t - 1) * flow_at_t - distance_to_t - 1
+            ))
+        end
+    end
+
+    sort!(options, by = o -> o.score, rev=true)
+    # look at most the top 5 options...
+    options3 = first(options, 5)
+
+    total_score = Vector()
+
+    for o in options3
+        new_state = copy(state)
+        new_state[o.location] = true
+
+        sub_decision = calculate_score_strategy(time_left - o.cost, new_state, o.location)
+        
+        push!(total_score, (
+            location = o.location,
+            state = sub_decision.state,
+            benefit = sub_decision.benefit + o.benefit
+        ))
+    end
+
+    sort!(total_score, by = t -> t.benefit, rev=true)
+    choice = first(total_score)
+
+    #println("Scores ", scores)
+    return (state = choice.state, benefit = choice.benefit)
+end
+
+
+
+max_time = 30
+initial_state = Dict()
+initial_loc = "AA"
+best = calculate_score_strategy(max_time, initial_state, initial_loc)
+best
+

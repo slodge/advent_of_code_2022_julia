@@ -1,0 +1,199 @@
+using CSV
+using DataFrames
+#using Pkg
+#Pkg.add("DataStructures")
+#using DataStructures
+
+#file = "16-input_test.txt"
+file = "16-input.txt"
+
+input = file |>
+    readlines 
+
+lineRegex = r"Valve (.+) has flow rate=(\d+); tunnels? leads? to valves? (.+)"
+
+# attempt 3
+
+caves = Dict()
+
+for line in input
+    lineMatch = match(lineRegex, line)
+    name = lineMatch[1]
+    rate = parse(Int, lineMatch[2])
+    tunnels = split(lineMatch[3], ", ")
+    println(name, rate, tunnels)
+    dist_tunnnels = map((t) -> (location = t, distance = 1), tunnels)
+    caves[name] = (flow = rate, tunnels = Dict(dist_tunnnels))
+end
+
+function walk(this_time)
+    new_caves = Dict()
+    
+    for c in keys(this_time)
+        current = this_time[c]
+
+        if current.flow == 0 
+            if c != "AA"
+                continue
+            end
+        end
+
+        tunnels = Dict()
+        for t in keys(current.tunnels)
+            other_end = caves[t]
+
+            if other_end.flow > 0 
+                tunnels[t] = current.tunnels[t]
+            end
+
+            for t2 in keys(other_end.tunnels)
+                if t2 == c
+                    continue
+                end
+
+                new_distance = other_end.tunnels[t2] + current.tunnels[t]
+                if haskey(tunnels, t2)
+                    existing = tunnels[t2]
+                    if new_distance < existing
+                        println("compacting $c removing $t moving to $t2 at distance $new_distance")
+                        tunnels[t2] = new_distance
+                    end
+                else
+                    println("compacting $c removing $t moving to $t2 at distance $new_distance")
+                    tunnels[t2] = new_distance
+                end
+            end
+        end
+
+        new_caves[c] = (flow = current.flow, tunnels = tunnels)
+    end
+
+    new_caves
+end
+
+
+
+function remove_dead_end_paths(current)
+    new_caves = Dict()
+    for c in keys(current)
+        cave = current[c]
+        new_tunnels = Dict()
+        for t in keys(cave.tunnels)
+            if caves[t].flow > 0
+                new_tunnels[t] = cave.tunnels[t]
+            end
+        end
+
+        new_caves[c] = (flow = cave.flow, tunnels = new_tunnels)
+    end
+    new_caves
+end
+
+current = caves
+for i in 1:30
+    next = walk(current)
+    current = next
+end
+
+current = remove_dead_end_paths(current)
+
+num_calls = 0
+function  calculate_score_strategy(time_left_A, time_left_B, state, location_A, location_B)
+
+    global num_calls = num_calls + 1
+    #println("call ", num_calls, " at time ", time_left_A, ", ", time_left_B)
+    if (rem(num_calls, 100000) == 0)
+        println("call ", num_calls, " at time ", time_left_A, ", ", time_left_B)
+    end
+
+    if (time_left_A <= 0 && time_left_B <= 0)
+        return (state=state, benefit=0)
+    end
+
+    options = Vector()
+
+    if (time_left_A > time_left_B)
+        location = location_A
+        time_left = time_left_A
+        moving = "A"
+    else
+        time_left = time_left_B
+        location = location_B
+        moving = "B"
+    end
+
+    cave = current[location]
+    
+    # option 1 is turn on the flow here
+    # cost is 1, benefit is (time_left - 1)*flow
+    # so net: (time_left - 1)*flow - 1
+    # 
+    # look at the tunnels...
+    # cost is distance + 1, benefit is (time_left - distance - 1)*flow_there
+    # so net: (time_left - distance - 1)*flow_there - distance - 1
+    if !haskey(state, location)
+        push!(options, (
+            location = location,
+            benefit = (time_left - 1) * cave.flow,
+            cost = 1,
+            score = (time_left - 1) * cave.flow - 1
+        ))
+    end
+
+    for t in keys(cave.tunnels)
+        distance_to_t = cave.tunnels[t]
+        flow_at_t = current[t].flow
+        if !haskey(state, t)
+            if (time_left > distance_to_t + 1)
+                push!(options, (
+                    location = t, 
+                    benefit = (time_left - distance_to_t - 1) * flow_at_t,
+                    cost = distance_to_t + 1,
+                    score = (time_left - distance_to_t - 1) * flow_at_t - distance_to_t - 1
+                ))
+            end
+        end
+    end
+
+    sort!(options, by = o -> o.score, rev=true)
+    # look at most the top 10 options...
+    options3 = first(options, 10)
+
+    total_score = Vector()
+
+    for o in options3
+        new_state = copy(state)
+        new_state[o.location] = true
+
+        if moving == "A"
+            sub_decision = calculate_score_strategy(time_left_A - o.cost, time_left_B, new_state, o.location, location_B)
+        else
+            sub_decision = calculate_score_strategy(time_left_A, time_left_B - o.cost, new_state, location_A, o.location)
+        end
+
+        push!(total_score, (
+            location = o.location,
+            state = sub_decision.state,
+            benefit = sub_decision.benefit + o.benefit
+        ))
+    end
+
+    sort!(total_score, by = t -> t.benefit, rev=true)
+    if (length(total_score) == 0)
+        return (state=state, benefit=0)
+    end
+
+    choice = first(total_score)
+
+    #println("Scores ", scores)
+    return (state = choice.state, benefit = choice.benefit)
+end
+
+
+
+max_time = 26 # 30 minutes minus 4
+initial_state = Dict()
+initial_loc = "AA"
+best = calculate_score_strategy(max_time, max_time, initial_state, initial_loc, initial_loc)
+best
+
